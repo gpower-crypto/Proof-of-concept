@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Music Generator</title>
+  </head>
+  <body>
+    <h1>Music Generator</h1>
+    <form id="generateForm">
+      <input
+        type="text"
+        id="prompt"
+        placeholder="Enter your music prompt"
+        required
+      />
+      <input
+        type="text"
+        id="userId"
+        placeholder="Enter your user ID"
+        required
+      />
+      <button type="submit">Generate Music</button>
+    </form>
+    <div id="response"></div>
+
+    <div id="modificationSection" style="display: none">
+      <h2>Modify Music</h2>
+      <form id="modifyForm">
+        <input
+          type="number"
+          id="taskId"
+          placeholder="Enter Task ID to modify"
+          required
+        />
+        <input
+          type="text"
+          id="modifications"
+          placeholder="Enter your modifications"
+          required
+        />
+        <input
+          type="text"
+          id="modifyUserId"
+          placeholder="Enter your user ID"
+          required
+        />
+        <button type="submit">Modify Music</button>
+      </form>
+      <div id="modifyResponse"></div>
+    </div>
+
+    <script>
+      document
+        .getElementById("generateForm")
+        .addEventListener("submit", function (e) {
+          e.preventDefault();
+          const prompt = document.getElementById("prompt").value;
+          const userId = document.getElementById("userId").value;
+
+          fetch("http://localhost:3000/generate", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ prompt, userId }),
+          })
+            .then((response) => response.json())
+            .then((data) => {
+              const taskId = data.taskId;
+              const responseDiv = document.getElementById("response");
+              const message = document.createElement("div");
+              message.innerText = `Prompt: ${prompt}, User ID: ${userId} - Task queued. Task ID: ${taskId}`;
+              responseDiv.appendChild(message);
+              pollTaskStatus(taskId, prompt, userId);
+            })
+            .catch((error) => console.error("Error:", error));
+        });
+
+      document
+        .getElementById("modifyForm")
+        .addEventListener("submit", function (e) {
+          e.preventDefault();
+          const taskId = parseInt(document.getElementById("taskId").value, 10);
+          const modifications = document.getElementById("modifications").value;
+          const userId = document.getElementById("modifyUserId").value;
+
+          fetch("http://localhost:3000/modify", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ taskId, modifications, userId }),
+          })
+            .then((response) => response.json())
+            .then((data) => {
+              const modifyResponseDiv =
+                document.getElementById("modifyResponse");
+              const message = document.createElement("div");
+              if (response.status === 409) {
+                message.innerText = data.message;
+              } else {
+                message.innerText = `Modifications queued for Task ID: ${taskId}`;
+                pollTaskStatus(
+                  taskId,
+                  `Modifications: ${modifications}`,
+                  userId,
+                  "modifyResponse"
+                );
+              }
+              modifyResponseDiv.appendChild(message);
+            })
+            .catch((error) => console.error("Error:", error));
+        });
+
+      function pollTaskStatus(
+        taskId,
+        prompt,
+        userId,
+        responseDivId = "response"
+      ) {
+        const interval = setInterval(() => {
+          fetch(`http://localhost:3000/status/${taskId}`)
+            .then((response) => response.json())
+            .then((data) => {
+              const responseDiv = document.getElementById(responseDivId);
+              const message = document.createElement("div");
+              let statusMessage = "";
+              switch (data.fileStatus) {
+                case 0:
+                  statusMessage = "pending";
+                  break;
+                case 1:
+                  statusMessage = "processing";
+                  break;
+                case 2:
+                  statusMessage = "completed";
+                  clearInterval(interval);
+                  message.innerHTML = `Prompt: ${prompt}, User ID: ${userId} - Task completed. File URL: ${data.filePath} <br> <audio controls><source src="${data.filePath}" type="audio/wav"></audio>`;
+                  responseDiv.appendChild(message);
+
+                  // Show modification section
+                  document.getElementById("modificationSection").style.display =
+                    "block";
+                  document.getElementById("taskId").value = taskId;
+                  document.getElementById("modifyUserId").value = userId;
+                  return;
+              }
+              message.innerText = `Prompt: ${prompt}, User ID: ${userId} - Task status: ${statusMessage}`;
+              responseDiv.appendChild(message);
+            })
+            .catch((error) => console.error("Error:", error));
+        }, 3000); // Poll every 3 seconds
+      }
+    </script>
+  </body>
+</html>
